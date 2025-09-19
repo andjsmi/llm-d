@@ -4,7 +4,7 @@ SHELL := /usr/bin/env bash
 PROJECT_NAME ?= llm-d
 DEV_VERSION ?= 0.0.1
 PROD_VERSION ?= 0.0.0
-IMAGE_TAG_BASE ?= ghcr.io/llm-d/$(PROJECT_NAME)
+IMAGE_TAG_BASE ?= 485579262988.dkr.ecr.us-east-1.amazonaws.com/llm-d/$(PROJECT_NAME)
 IMG = $(IMAGE_TAG_BASE):$(DEV_VERSION)
 NAMESPACE ?= hc4ai-operator
 
@@ -74,7 +74,7 @@ buildah-build: check-builder load-version-json ## Build and push image (multi-ar
 	  sed -e '1 s/\(^FROM\)/FROM --platform=$${BUILDPLATFORM}/' $(DOCKERFILE) > Dockerfile.cross; \
 	  - docker buildx create --use --name image-builder || true; \
 	  docker buildx use image-builder; \
-	  docker buildx build --push --platform=$(PLATFORMS) --tag $(IMG) -f Dockerfile.cross . || exit 1; \
+	  docker buildx build --platform=$(PLATFORMS) --tag $(IMG) -f Dockerfile.cross . || exit 1; \
 	  docker buildx rm image-builder || true; \
 	  rm Dockerfile.cross; \
 	elif [ "$(BUILDER)" = "podman" ]; then \

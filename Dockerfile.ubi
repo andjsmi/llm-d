@@ -5,58 +5,62 @@ ARG CUDA_PATCH=1
 # ============================================================================
 # BUILD STAGE - Install build dependencies and create wheels
 # ============================================================================
-FROM nvcr.io/nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_PATCH}-devel-ubi9 AS builder
+FROM nvcr.io/nvidia/cuda-dl-base:25.01-cuda12.8-devel-ubuntu24.04 AS builder
 
 ARG CUDA_MAJOR=12
 ARG CUDA_MINOR=8
 ARG CUDA_PATCH=1
 ARG PYTHON_VERSION
 
-ARG USE_SCCACHE=true
+ARG RUNTIME_IMAGE="nvcr.io/nvidia/cuda"
+ARG RUNTIME_IMAGE_TAG="12.8.1-runtime-ubuntu24.04"
+# ARG RUNTIME_IMAGE_TAG="25.03-cuda12.8-runtime-ubuntu24.04"
+
+ARG USE_SCCACHE=false
 
 COPY sccache.config.toml /tmp
 
-RUN --mount=type=secret,id=aws_access_key_id \
-    --mount=type=secret,id=aws_secret_access_key \
-    --mount=type=tmpfs,target=/root/.aws \
-    if [ "${USE_SCCACHE}" = "true" ]; then \
-        set -Eeuo pipefail && \
-        # install sccache
-        dnf install -y openssl-devel && \
-        mkdir -p /tmp/sccache && \
-        cd /tmp/sccache && \
-        curl -sLO https://github.com/mozilla/sccache/releases/download/v0.10.0/sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz && \
-        tar -xf sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz && \
-        mv sccache-v0.10.0-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache && \
-        cd /tmp && \
-        rm -rf /tmp/sccache && \
-        # sccache configurations
-        mkdir -p $HOME/.config/sccache && \
-        mv /tmp/sccache.config.toml $HOME/.config/sccache/config.toml && \
-        export SCCACHE_CONF=$HOME/.config/sccache/config.toml && \
-        # build out AWS creds and configs
-        umask 077 && \
-        AKI="$(cat /run/secrets/aws_access_key_id)" && \
-        SAK="$(cat /run/secrets/aws_secret_access_key)" && \
-        { \
-        echo "[default]"; \
-        echo "region=us-west-2"; \
-        echo "aws_access_key_id=${AKI}"; \
-        echo "aws_secret_access_key=${SAK}"; \
-        } > /root/.aws/credentials && \
-        { \
-        echo "[default]"; \
-        echo "region=us-west-2"; \
-        echo "output=json"; \
-        } > /root/.aws/config && \
-        export AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials AWS_CONFIG_FILE=/root/.aws/config AWS_DEFAULT_REGION="us-west-2" AWS_PROFILE=default && \
-        export SCCACHE_IDLE_TIMEOUT=0 && \
-        export SCCACHE_LOG=debug && \
-        export RUSTC_WRAPPER="sccache" && \
-        /usr/local/bin/sccache --start-server && \
-        # verify sccache is working with the s3 backend
-        /usr/local/bin/sccache --show-stats; \
-    fi
+# RUN --mount=type=secret,id=aws_access_key_id \
+#     --mount=type=secret,id=aws_secret_access_key \
+#     --mount=type=tmpfs,target=/root/.aws \
+#     if [ "${USE_SCCACHE}" = "true" ]; then \
+#         set -Eeuo pipefail && \
+#         # install sccache
+#         apt-get install -y openssl-devel && \
+#         mkdir -p /tmp/sccache && \
+#         cd /tmp/sccache && \
+#         curl -sLO https://github.com/mozilla/sccache/releases/download/v0.10.0/sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz && \
+#         tar -xf sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz && \
+#         mv sccache-v0.10.0-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache && \
+#         cd /tmp && \
+#         rm -rf /tmp/sccache && \
+#         # sccache configurations
+#         mkdir -p $HOME/.config/sccache && \
+#         mv /tmp/sccache.config.toml $HOME/.config/sccache/config.toml && \
+#         export SCCACHE_CONF=$HOME/.config/sccache/config.toml && \
+#         # build out AWS creds and configs
+#         umask 077 && \
+#         AKI="$(cat /run/secrets/aws_access_key_id)" && \
+#         SAK="$(cat /run/secrets/aws_secret_access_key)" && \
+#         { \
+#         echo "[default]"; \
+#         echo "region=us-west-2"; \
+#         echo "aws_access_key_id=${AKI}"; \
+#         echo "aws_secret_access_key=${SAK}"; \
+#         } > /root/.aws/credentials && \
+#         { \
+#         echo "[default]"; \
+#         echo "region=us-west-2"; \
+#         echo "output=json"; \
+#         } > /root/.aws/config && \
+#         export AWS_SHARED_CREDENTIALS_FILE=/root/.aws/credentials AWS_CONFIG_FILE=/root/.aws/config AWS_DEFAULT_REGION="us-west-2" AWS_PROFILE=default && \
+#         export SCCACHE_IDLE_TIMEOUT=0 && \
+#         export SCCACHE_LOG=debug && \
+#         export RUSTC_WRAPPER="sccache" && \
+#         /usr/local/bin/sccache --start-server && \
+#         # verify sccache is working with the s3 backend
+#         /usr/local/bin/sccache --show-stats; \
+#     fi
 
 WORKDIR /workspace
 
@@ -72,7 +76,8 @@ EOF
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     UV_LINK_MODE=copy \
-    TORCH_CUDA_ARCH_LIST="9.0a;10.0+PTX" \
+    # TORCH_CUDA_ARCH_LIST="9.0a;10.0+PTX" \
+    TORCH_CUDA_ARCH_LIST="10.0+PTX" \
     PYTHON_VERSION=${PYTHON_VERSION:-3.12} \
     UV_TORCH_BACKEND=${UV_TORCH_BACKEND:-cu${CUDA_MAJOR}${CUDA_MINOR}} \
     UV_BUILD_CONSTRAINT=/tmp/build-constraints.txt \
@@ -80,52 +85,62 @@ ENV LANG=C.UTF-8 \
     VIRTUAL_ENV=/opt/vllm 
 
 # Update base packages
-RUN dnf -q update -y && dnf clean all
+RUN apt-get -q update -y && apt-get install -y software-properties-common && add-apt-repository ppa:deadsnakes/ppa -y && apt-get update && apt-get clean all
 
 # Install base packages and EPEL in single layer
-RUN dnf -q install -y dnf-plugins-core && \
-    dnf -q install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
-    dnf config-manager --set-enabled epel && \
-    DOWNLOAD_ARCH=""; \
+RUN DOWNLOAD_ARCH=""; \
     if [ "$(uname -m)" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
         DOWNLOAD_ARCH="x86_64"; \
     fi; \
-    dnf config-manager --add-repo "https://developer.download.nvidia.com/compute/cuda/repos/rhel9/${DOWNLOAD_ARCH}/cuda-rhel9.repo" && \
-    dnf -q install -y --allowerasing \
-        python${PYTHON_VERSION} python${PYTHON_VERSION}-pip python${PYTHON_VERSION}-wheel \
-        python${PYTHON_VERSION}-devel \
-        python3.9-devel \
+    # apt-get config-manager --add-repo "https://developer.download.nvidia.com/compute/cuda/repos/rhel9/${DOWNLOAD_ARCH}/cuda-rhel9.repo" && \
+    apt-get -q install -y \
+        # python${PYTHON_VERSION} python${PYTHON_VERSION}-pip python${PYTHON_VERSION}-wheel \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+        python3.9-dev \
+        python3.9-venv \
         which procps findutils tar \
-        gcc gcc-c++ \
+        gcc g++ \
         make cmake \
         autoconf automake libtool \
         git \
         curl wget \
         gzip \
-        zlib-devel \
-        openssl-devel \
+        zlib1g-dev \
+        libssl-dev \
         pkg-config \
-        libuuid-devel \
-        glibc-devel \
-        rdma-core-devel \
-        libibverbs \
-        libibverbs-devel \
-        numactl-libs \
+        uuid-dev \
+        libc6-dev \
+        # rdma-core-devel \
+        # libibverbs \
+        # libibverbs-devel \
+        # vLLM build dependencies
+        cmake \
+        libibverbs1 \
+        ibverbs-providers \
+        ibverbs-utils \
+        libibumad-dev \
+        libibverbs-dev \
+        libnuma-dev \
+        librdmacm-dev \
+        rdma-core \
+        # numactl-libs \
         subunit \
         pciutils \
-        pciutils-libs \
+        libpci3 \
         ninja-build \
-        xz \
+        xz-utils \
         rsync \
-    && dnf clean all
+    && apt-get clean all
 
 # Setup Python virtual environment
 RUN python${PYTHON_VERSION} -m venv /opt/vllm && \
     ${VIRTUAL_ENV}/bin/pip install --progress-bar off --no-cache -U pip wheel uv meson-python ninja pybind11 build
 
-ENV LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/lib:/usr/local/lib64" \
+ENV LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/lib:/usr/local/lib/x86_64-linux-gnu" \
     CPATH="/usr/include:/usr/local/include:/usr/local/cuda/include" \
-    PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig"
+    PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig"
 
 ARG NVSHMEM_VERSION=3.3.20
 
@@ -141,7 +156,7 @@ RUN --mount=type=cache,target=/var/cache/git \
     git clone https://github.com/NVIDIA/gdrcopy.git && \
     cd gdrcopy && \
     PREFIX=/usr/local DESTLIB=/usr/local/lib make lib_install && \
-    cp src/libgdrapi.so.2.* /usr/lib64/ && \
+    cp src/libgdrapi.so.2.* /usr/local/lib/ && \
     ldconfig && \
     cd .. && rm -rf gdrcopy
 
@@ -164,6 +179,7 @@ RUN --mount=type=cache,target=/var/cache/git \
         --with-dm \
         --with-gdrcopy=/usr/local \
         --enable-mt \
+        --with-efa \
         --with-mlx5 \
         --prefix=/usr/local && \
     make -j$(nproc) && \
@@ -188,9 +204,9 @@ RUN cd /tmp && \
         cmake \
         -G Ninja \
         -DNVSHMEM_PREFIX=${NVSHMEM_DIR} \
-        -DCMAKE_CUDA_ARCHITECTURES="90a;100" \
+        -DCMAKE_CUDA_ARCHITECTURES="100" \
         -DNVSHMEM_PMIX_SUPPORT=0 \
-        -DNVSHMEM_LIBFABRIC_SUPPORT=0 \
+        -DNVSHMEM_LIBFABRIC_SUPPORT=1 \
         -DNVSHMEM_IBRC_SUPPORT=1 \
         -DNVSHMEM_IBGDA_SUPPORT=1 \
         -DNVSHMEM_IBDEVX_SUPPORT=1 \
@@ -201,6 +217,7 @@ RUN cd /tmp && \
         -DNVSHMEM_BUILD_TESTS=0 \
         -DNVSHMEM_BUILD_EXAMPLES=0 \
         -DGDRCOPY_HOME=/usr/local \
+        -DLIBFABRIC_HOME=/opt/amazon/efa \
         -DNVSHMEM_DISABLE_CUDA_VMM=1 \
         .. && \
         ninja -j$(nproc) && \
@@ -224,7 +241,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Temporarily use hotfix on 0.4 to avoid NIXL launch OH
 # via threadpool w/ UCX workers - to be fixed in nixl=0.5.
 ARG NIXL_REPO_URL="https://github.com/ai-dynamo/nixl.git"
-ARG NIXL_COMMIT_SHA="ba7e40760027796890ad17e95620526c3c5560ee"
+ARG NIXL_COMMIT_SHA="0da288bf863f299a5642c494617ba94886582feb"
 RUN --mount=type=cache,target=/tmp/nixl-cache \
     ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/lib64/ && \
     mkdir /opt/nixl && cd /opt/nixl && \
@@ -234,7 +251,7 @@ RUN --mount=type=cache,target=/tmp/nixl-cache \
     export PYTHON="${VIRTUAL_ENV}/bin/python" && \
     export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH}" && \
     export CUDA_HOME="/usr/local/cuda" && \
-    export LD_LIBRARY_PATH="/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/cuda/lib64/stubs/:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/lib:/usr/local/lib64:/usr/lib64:${LD_LIBRARY_PATH}" && \
+    export LD_LIBRARY_PATH="/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/cuda/lib64/stubs/:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/lib:/usr/local/lib/x86_64-linux-gnu:/usr/lib64:${LD_LIBRARY_PATH}" && \
     meson setup build --prefix=/usr/local -Dbuildtype=release && \
     cd build && \
     ninja && \
@@ -247,7 +264,7 @@ RUN --mount=type=cache,target=/tmp/nixl-cache \
     rm -rf build
 
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf && \
-    echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf && \
+    echo "/usr/local/lib/x86_64-linux-gnu" >> /etc/ld.so.conf.d/local.conf && \
     ldconfig
 
 WORKDIR /workspace
@@ -319,12 +336,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     cd .. && rm -rf pplx-kernels
 
 # verify builds are hitting the cache
-RUN sccache --show-stats
+# RUN sccache --show-stats
 
 # ============================================================================
 # RUNTIME STAGE - Minimal runtime image
 # ============================================================================
-FROM nvcr.io/nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_PATCH}-devel-ubi9 AS runtime
+# FROM nvcr.io/nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_PATCH}-devel-ubi9 AS runtime
+FROM nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04 AS runtime
 
 ARG CUDA_MAJOR=12
 ARG CUDA_MINOR=8
@@ -332,7 +350,7 @@ ARG CUDA_PATCH=1
 ARG PYTHON_VERSION
 ARG NVSHMEM_VERSION=3.3.20
 
-RUN cat > /tmp/constraints.txt << 'EOF'
+RUN cat > /tmp/constraints.txt <<'EOF'
 torch==2.7.1
 EOF
 
@@ -344,24 +362,31 @@ ENV LANG=C.UTF-8 \
     VIRTUAL_ENV=/opt/vllm \
     NVSHMEM_DIR="/opt/nvshmem-${NVSHMEM_VERSION}" \
     # LD_LIBRARY_PATH needs the torch path to apply proper linkers so as not to produce torch ABI missmatch
-    LD_LIBRARY_PATH="/opt/vllm/lib64/python${PYTHON_VERSION}/site-packages/torch/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/lib:/usr/local/lib64:/opt/nvshmem-${NVSHMEM_VERSION}/lib:${LD_LIBRARY_PATH}" \
+    LD_LIBRARY_PATH="/usr/lib:/opt/vllm/lib64/python${PYTHON_VERSION}/site-packages/torch/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/lib:/usr/local/lib/x86_64-linux-gnu:/opt/nvshmem-${NVSHMEM_VERSION}/lib:${LD_LIBRARY_PATH}" \
     PATH="/opt/nvshmem-${NVSHMEM_VERSION}/bin:${PATH}" \
     CPATH="/opt/nvshmem-${NVSHMEM_VERSION}/include:${CPATH}" \
-    TORCH_CUDA_ARCH_LIST="9.0a;10.0+PTX"
+    # TORCH_CUDA_ARCH_LIST="9.0a;10.0+PTX"
+    TORCH_CUDA_ARCH_LIST="10.0+PTX"
 
 # Update base packages
-RUN dnf update -y && dnf clean all
+# RUN apt-get update -y && apt-get clean all 
+
+RUN apt-get -q update -y && apt-get install -y software-properties-common && add-apt-repository ppa:deadsnakes/ppa -y && apt-get update && apt-get clean all
 
 # Install only runtime dependencies
-RUN dnf install -y --allowerasing \
-        python${PYTHON_VERSION} python${PYTHON_VERSION}-pip python${PYTHON_VERSION}-devel \
-        rdma-core-devel \
-        numactl-libs \
+RUN apt-get update -y && apt-get install -y \
+        # python${PYTHON_VERSION} python${PYTHON_VERSION}-pip python${PYTHON_VERSION}-devel python${PYTHON_VERSION}-venv \
+        python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv \
+        # rdma-core-devel \
+        librdmacm-dev \
+        rdma-core \
+        # numactl-libs \
+        libnuma-dev \
         pciutils \
-        procps-ng \
+        procps \
         git \
         curl \
-        gcc && dnf clean all
+        gcc && apt-get clean all
 
 # Copy UCX libraries from builder
 COPY --from=builder /usr/local/lib/libucp* /usr/local/lib/
@@ -369,17 +394,17 @@ COPY --from=builder /usr/local/lib/libucs* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libuct* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libucm* /usr/local/lib/
 COPY --from=builder /usr/local/lib/ucx/ /usr/local/lib/ucx/
-COPY --from=builder /usr/local/lib64/libucx_utils.so /usr/local/lib64/
+COPY --from=builder /usr/local/lib/x86_64-linux-gnu/libucx_utils.so /usr/lib/
 
 # Copy gdrcopy libraries from builder
-COPY --from=builder /usr/lib64/libgdrapi.so.2.* /usr/lib64/
-COPY --from=builder /usr/local/lib/libgdrapi.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libgdrapi.so.2.* /usr/lib/
+COPY --from=builder /usr/local/lib/libgdrapi.so* /usr/lib/
 
 # Copy nixl libraries from builder
-COPY --from=builder /usr/local/lib64/libnixl* /usr/local/lib64/
-COPY --from=builder /usr/local/lib64/libstream.so /usr/local/lib64/
-COPY --from=builder /usr/local/lib64/libserdes.so /usr/local/lib64/
-COPY --from=builder /usr/local/lib64/plugins/ /usr/local/lib64/plugins/
+COPY --from=builder /usr/local/lib/x86_64-linux-gnu/libnixl* /usr/lib/
+COPY --from=builder /usr/local/lib/x86_64-linux-gnu/libstream.so /usr/lib/
+COPY --from=builder /usr/local/lib/x86_64-linux-gnu/libserdes.so /usr/lib/
+COPY --from=builder /usr/local/lib/x86_64-linux-gnu/plugins/ /usr/lib/plugins/
 COPY --from=builder /usr/local/include/nixl* /usr/local/include/
 
 # Copy compiled NVSHMEM libraries from builder
@@ -387,7 +412,7 @@ COPY --from=builder /opt/nvshmem-${NVSHMEM_VERSION}/ /opt/nvshmem-${NVSHMEM_VERS
 
 # Setup ldconfig and library paths
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf && \
-    echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf && \
+    echo "/usr/lib" >> /etc/ld.so.conf.d/local.conf && \
     echo "/opt/nvshmem-${NVSHMEM_VERSION}/lib" >> /etc/ld.so.conf.d/local.conf && \
     echo "/opt/vllm/lib64/python3.12/site-packages/.nixl.mesonpy.libs/plugins" >> /etc/ld.so.conf.d/local.conf && \
     ldconfig
@@ -402,6 +427,7 @@ COPY --from=builder /wheels/*.whl /tmp/wheels/
 # Define commit SHAs as build args to avoid layer invalidation
 ARG LMCACHE_COMMIT_SHA=0db8ae4746a207a72483d716b5f82545a2ead24b
 ARG VLLM_COMMIT_SHA=53415653ff24be03e7c90f5b42ef9cb3f72aad71
+# ARG VLLM_COMMIT_SHA=1da94e673c257373280026f75ceb4effac80e892
 
 ARG VLLM_PREBUILT=0
 
@@ -412,7 +438,7 @@ ARG VLLM_WHEEL_URL="https://gitlab.com/api/v4/projects/72482892/packages/pypi/si
 # Install all compiled wheels (DeepEP, DeepGEMM, pplx-kernels, LMCache, nixl)
 # Installs vllm source editably (unless using custom prebuilt) for dev experience
 RUN --mount=type=cache,target=/var/cache/git \
-    source /opt/vllm/bin/activate && \
+    . /opt/vllm/bin/activate && \
     uv pip install cuda-python 'huggingface_hub[hf_xet]' && \
     uv pip install /tmp/wheels/*.whl && \
     git clone https://github.com/vllm-project/vllm.git /opt/vllm-source && \
@@ -426,16 +452,23 @@ RUN --mount=type=cache,target=/var/cache/git \
         VLLM_COMMIT_SHA_SHORT="g$(git rev-parse --short HEAD)"; \
         CUDA_SHORT="cu${CUDA_MAJOR}${CUDA_MINOR}"; \
         export VLLM_WHEEL_VERSION="0.0.0+${VLLM_COMMIT_SHA_SHORT}.${CUDA_SHORT}"; \
-        VLLM_USE_PRECOMPILED=1 uv pip install --index-url "${VLLM_WHEEL_URL}" "vllm==${VLLM_WHEEL_VERSION}"; \
+        # VLLM_USE_PRECOMPILED=1 uv pip install --index-url "${VLLM_WHEEL_URL}" "vllm==${VLLM_WHEEL_VERSION}"; \
+        VLLM_USE_PRECOMPILED=1 uv pip install "vllm"; \
     else \
         VLLM_COMMIT="$(git merge-base HEAD origin/main)"; \
-        VLLM_PRECOMPILED_WHEEL_LOCATION="https://wheels.vllm.ai/${VLLM_COMMIT}/vllm-1.0.0.dev-cp38-abi3-manylinux1_${VLLM_WHEEL_ARCH}.whl"; \
-        VLLM_USE_PRECOMPILED=1 uv pip install --editable .; \
+        # VLLM_PRECOMPILED_WHEEL_LOCATION="https://wheels.vllm.ai/${VLLM_COMMIT}/vllm-1.0.0.dev-cp38-abi3-manylinux1_${VLLM_WHEEL_ARCH}.whl"; \
+        export MAX_JOBS=16; \
+        # VLLM_USE_PRECOMPILED=1 uv pip install --editable .; \
+        python use_existing_torch.py; \
+        uv pip install -r requirements/build.txt; \
+        uv pip install --no-build-isolation -e .; \
+        # uv pip install --editable .; \
+        echo "Installed vllm"; \
     fi; \
-    uv pip install "nvidia-nccl-cu12>=2.26.2.post1" && \
+    uv pip install "transformers==4.55.3" "nvidia-nccl-cu12>=2.26.2.post1" && \
     rm -rf /tmp/wheels
 
-RUN dnf autoremove -y && dnf clean all
+RUN apt-get autoremove -y && apt-get clean all
 
 # setup non-root user for OpenShift
 RUN umask 002 && \
