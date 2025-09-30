@@ -12,7 +12,7 @@ ARG CUDA_MINOR=8
 ARG CUDA_PATCH=1
 ARG PYTHON_VERSION
 
-ARG USE_SCCACHE=false
+ARG USE_SCCACHE=true
 
 COPY sccache.config.toml /tmp
 
@@ -22,7 +22,7 @@ RUN --mount=type=secret,id=aws_access_key_id \
     if [ "${USE_SCCACHE}" = "true" ]; then \
         set -Eeuo pipefail && \
         # install sccache
-        apt-get install -y openssl-devel && \
+        apt-get update && apt-get install -y libssl-dev && \
         mkdir -p /tmp/sccache && \
         cd /tmp/sccache && \
         curl -sLO https://github.com/mozilla/sccache/releases/download/v0.10.0/sccache-v0.10.0-x86_64-unknown-linux-musl.tar.gz && \
@@ -177,15 +177,11 @@ RUN --mount=type=cache,target=/var/cache/git \
 ENV CPPFLAGS="-I$NVSHMEM_DIR/include ${CPPFLAGS}" \
     LDFLAGS="-L$NVSHMEM_DIR/lib ${LDFLAGS}"
 
-# Copy patches before build
-COPY patches/ /tmp/patches/
-
 # Build and install NVSHMEM from source with coreweave patch
 RUN cd /tmp && \
     wget https://developer.download.nvidia.com/compute/redist/nvshmem/${NVSHMEM_VERSION}/source/nvshmem_src_cuda12-all-all-${NVSHMEM_VERSION}.tar.gz -O nvshmem_src_cuda${CUDA_MAJOR}.tar.gz && \
     tar -xf nvshmem_src_cuda${CUDA_MAJOR}.tar.gz && \
     cd nvshmem_src && \
-    git apply /tmp/patches/cks_nvshmem${NVSHMEM_VERSION}.patch && \
     mkdir build && \
         cd build && \
         cmake \
