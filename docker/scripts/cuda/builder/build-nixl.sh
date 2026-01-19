@@ -25,7 +25,7 @@ cd /tmp
 . "${VIRTUAL_ENV}/bin/activate"
 
 git clone "${NIXL_REPO}" nixl && cd nixl
-git checkout -q "${NIXL_VERSION}"
+#git checkout -q "0.7.1"
 
 if [ "${USE_SCCACHE}" = "true" ]; then
     export CC="sccache gcc" CXX="sccache g++" NVCC="sccache nvcc"

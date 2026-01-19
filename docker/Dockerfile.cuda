@@ -22,7 +22,7 @@ ARG TARGETPLATFORM=linux/amd64
 ARG BASE_IMAGE_SUFFIX=ubi9
 ARG PYTHON_VERSION=3.12
 
-ARG USE_SCCACHE=true
+ARG USE_SCCACHE=false
 
 ######################## COMPONENT VERSIONS ########################
 
@@ -32,20 +32,25 @@ ARG GDRCOPY_REPO="https://github.com/NVIDIA/gdrcopy.git"
 ARG GDRCOPY_VERSION="v2.5.1"
 
 ARG UCX_REPO="https://github.com/openucx/ucx.git"
-ARG UCX_VERSION="v1.19.0"
+ARG UCX_VERSION="1.20.0"
 
 ARG NVSHMEM_USE_GIT="true"
 ARG NVSHMEM_REPO="https://github.com/NVIDIA/nvshmem.git"
 ARG NVSHMEM_VERSION="v3.4.5-0"
 
 ARG BUILD_NIXL_FROM_SOURCE="true"
-ARG NIXL_REPO="https://github.com/ai-dynamo/nixl.git"
-ARG NIXL_VERSION="0.8.0"
+# ARG NIXL_REPO="https://github.com/ai-dynamo/nixl.git"
+# ARG NIXL_VERSION="0.8.0"
+ARG NIXL_REPO="https://github.com/dmvevents/nixl.git"
+ARG NIXL_VERSION="feature/efa-performance-optimizations"
+
 
 ARG INFINISTORE_REPO="https://github.com/bytedance/InfiniStore.git"
 ARG INFINISTORE_VERSION="0.2.33"
 ARG LMCACHE_REPO="https://github.com/LMCache/LMCache.git"
 ARG LMCACHE_VERSION="v0.3.8"
+
+ARG UCCL_REPO="https://github.com/uccl-project/uccl.git"
 
 # Kernels
 ARG DEEPEP_REPO="https://github.com/smarterclayton/DeepEP"
@@ -55,12 +60,13 @@ ARG DEEPGEMM_VERSION="v2.1.0"
 ARG PPLX_KERNELS_REPO="https://github.com/perplexityai/pplx-kernels"
 ARG PPLX_KERNELS_VERSION="2bd6e30fab358829bd01d1c0907be8088ff9e5e1"
 ARG FLASHINFER_REPO="https://github.com/flashinfer-ai/flashinfer.git"
-ARG FLASHINFER_VERSION="v0.5.2"
+ARG FLASHINFER_VERSION="v0.5.3"
 
 # vLLM build settings
-ARG VLLM_REPO="https://github.com/neuralmagic/vllm.git"
-ARG VLLM_COMMIT_SHA="llm-d-release-0.4"
-ARG VLLM_PRECOMPILED_WHEEL_COMMIT="75648b16ddce1bff02c39c6f06be62a58385ff52"
+ARG VLLM_REPO="https://github.com/vllm-project/vllm.git"
+ARG VLLM_COMMIT_SHA="v0.13.0"
+# ARG VLLM_COMMIT_SHA="releases/v0.11.2
+ARG VLLM_PRECOMPILED_WHEEL_COMMIT="72506c98349d6bcd32b4e33eec7b5513453c1502"
 ARG VLLM_PREBUILT=0
 ARG VLLM_USE_PRECOMPILED=1
 
@@ -100,7 +106,7 @@ ENV LANG="C.UTF-8" \
     UV_HTTP_TIMEOUT="500" \
     UV_INDEX_STRATEGY="unsafe-best-match" \
     UV_LINK_MODE="copy" \
-    TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6;8.9;9.0;9.0a;10.0;12.0+PTX" \
+    TORCH_CUDA_ARCH_LIST="9.0;9.0a;10.0;12.0+PTX" \
     PYTHON_VERSION="${PYTHON_VERSION}" \
     UV_TORCH_BACKEND="${UV_TORCH_BACKEND:-cu${CUDA_MAJOR}${CUDA_MINOR}}" \
     UV_BUILD_CONSTRAINT="/tmp/build-constraints.txt" \
@@ -115,8 +121,9 @@ COPY docker/scripts/cuda/builder/install-base-packages.sh /tmp/install-base-pack
 RUN --mount=type=secret,id=subman_org \
     --mount=type=secret,id=subman_activation_key \
     TARGETOS=${TARGETOS} /tmp/install-base-packages.sh && \
-    rm -f /tmp/install-base-packages.sh /tmp/package-utils.sh && \
-    rm -rf /tmp/packages
+    rm -f /tmp/install-base-packages.sh /tmp/package-utils.sh 
+    # && \
+    # rm -rf /tmp/packages
 
 # Install cmake from script for consistency between ubuntu22.04 and rhel9
 COPY docker/scripts/cuda/builder/install-cmake.sh /tmp/install-cmake.sh
@@ -161,8 +168,6 @@ ARG GDRCOPY_REPO
 ARG GDRCOPY_VERSION
 COPY docker/scripts/cuda/builder/build-gdrcopy.sh /tmp/build-gdrcopy.sh
 RUN --mount=type=cache,target=/var/cache/git \
-    --mount=type=secret,id=aws_access_key_id \
-    --mount=type=secret,id=aws_secret_access_key \
     TARGETPLATFORM=${TARGETPLATFORM} TARGETOS=${TARGETOS} /tmp/build-gdrcopy.sh && \
     rm -f /tmp/build-gdrcopy.sh
 
@@ -171,8 +176,6 @@ ARG UCX_REPO
 ARG UCX_VERSION
 COPY docker/scripts/cuda/builder/build-ucx.sh /tmp/build-ucx.sh
 RUN --mount=type=cache,target=/var/cache/git \
-    --mount=type=secret,id=aws_access_key_id \
-    --mount=type=secret,id=aws_secret_access_key \
     /tmp/build-ucx.sh && \
     rm -f /tmp/build-ucx.sh
 
@@ -183,8 +186,6 @@ ARG NVSHMEM_VERSION
 ENV NVSHMEM_CUDA_ARCHITECTURES="90a;100"
 COPY docker/scripts/cuda/builder/build-nvshmem.sh /tmp/build-nvshmem.sh
 RUN --mount=type=cache,target=/var/cache/git \
-    --mount=type=secret,id=aws_access_key_id \
-    --mount=type=secret,id=aws_secret_access_key \
     /tmp/build-nvshmem.sh && \
     rm -f /tmp/build-nvshmem.sh
 
@@ -210,8 +211,6 @@ ARG NIXL_REPO
 ARG NIXL_VERSION
 COPY docker/scripts/cuda/builder/build-nixl.sh /tmp/build-nixl.sh
 RUN --mount=type=cache,target=/var/cache/git \
-    --mount=type=secret,id=aws_access_key_id \
-    --mount=type=secret,id=aws_secret_access_key \
     /tmp/build-nixl.sh && \
     rm -f /tmp/build-nixl.sh
 
@@ -228,10 +227,17 @@ ARG LMCACHE_REPO
 ARG LMCACHE_VERSION
 COPY docker/scripts/cuda/builder/build-lmcache.sh /tmp/build-lmcache.sh
 RUN --mount=type=cache,target=/var/cache/git \
-    --mount=type=secret,id=aws_access_key_id \
-    --mount=type=secret,id=aws_secret_access_key \
     /tmp/build-lmcache.sh && \
     rm -f /tmp/build-lmcache.sh
+
+
+
+# Build UCCL wheels
+ARG UCCL_REPO
+COPY docker/scripts/cuda/builder/build-uccl.sh /tmp/build-uccl.sh
+RUN --mount=type=cache,target=/var/cache/git \
+    /tmp/build-uccl.sh && \
+    rm -f /tmp/build-uccl.sh
 
 # Use existing virtual environment at /opt/vllm
 WORKDIR /workspace/vllm
@@ -250,8 +256,6 @@ ARG FLASHINFER_REPO
 ARG FLASHINFER_VERSION
 COPY docker/scripts/cuda/builder/build-compiled-wheels.sh /tmp/build-compiled-wheels.sh
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=secret,id=aws_access_key_id \
-    --mount=type=secret,id=aws_secret_access_key \
     TARGETPLATFORM=${TARGETPLATFORM} /tmp/build-compiled-wheels.sh && \
     rm -f /tmp/build-compiled-wheels.sh
 
@@ -312,7 +316,24 @@ RUN TARGETOS=${TARGETOS} /tmp/install-runtime-packages.sh && \
     rm -rf /tmp/packages
 
 # Copy in efa
-COPY --from=builder /opt/amazon/efa /opt/amazon/efa/
+#COPY --from=builder /opt/amazon/efa /opt/amazon/efa/
+
+COPY docker/scripts/cuda/common/package-utils.sh /tmp/package-utils.sh
+COPY docker/packages /tmp/packages
+COPY docker/scripts/cuda/builder/install-base-packages.sh /tmp/install-base-packages.sh
+RUN --mount=type=secret,id=subman_org \
+    --mount=type=secret,id=subman_activation_key \
+    TARGETOS=${TARGETOS} /tmp/install-base-packages.sh && \
+    rm -f /tmp/install-base-packages.sh /tmp/package-utils.sh && \
+    rm -rf /tmp/packages
+
+
+COPY docker/scripts/cuda/common/package-utils.sh /tmp/package-utils.sh
+COPY docker/scripts/cuda/builder/install-efa.sh /tmp/install-efa.sh
+RUN --mount=type=secret,id=subman_org \
+    --mount=type=secret,id=subman_activation_key \
+    TARGETOS=${TARGETOS} /tmp/install-efa.sh && \
+    rm -f /tmp/install-efa.sh /tmp/package-utils.sh
 
 # Copy gdrcopy libraries from builder
 # Install to /usr/local/lib (always present) and multiarch lib dir
@@ -378,6 +399,14 @@ RUN export UV_INSTALL_DIR=/usr/local/bin && \
 
 # Copy compiled wheels
 COPY --from=builder /wheels/*.whl /tmp/wheels/
+# COPY --from=builder /io/wheelhouse-cuda/uccl-*.whl /tmp/wheels/
+
+# COPY docker/packages /tmp/packages
+# ARG UCCL_REPO
+# COPY docker/scripts/cuda/runtime/build-uccl.sh /tmp/build-uccl.sh
+# RUN --mount=type=cache,target=/var/cache/git \
+#     /tmp/build-uccl.sh && \
+#     rm -f /tmp/build-uccl.sh && rm -rf /tmp/packages
 
 # Create the vllm user
 RUN useradd --uid 2000 --gid 0 -m vllm && \
@@ -416,6 +445,8 @@ COPY scripts/warn-vllm-precompiled.sh /opt/
     # 3) install vllm from source with pulling precomiled binaries (shared libraries) from the vllm wheels index - less flexible dev option, may or may not work swapping shas but faster than full editable
     # 2) install vllm from a wheel on the vllm wheels index - prod option, no flexbility
 COPY docker/scripts/cuda/runtime/install-vllm.sh /tmp/install-vllm.sh
+RUN uv pip install cmake==4.2.1
+
 RUN --mount=type=cache,target=/var/cache/git \
     chmod +x /tmp/install-vllm.sh && \
     /tmp/install-vllm.sh && \

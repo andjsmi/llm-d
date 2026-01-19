@@ -39,7 +39,8 @@
     "ninja-build": "ninja-build",
     "xz": "xz-utils",
     "rsync": "rsync",
-    "libaio-devel": "libaio-dev"
+    "libaio-devel": "libaio-dev",
+    "glog-devel": "libgoogle-glog-dev"
   },
   "ubuntu_only": [
     "debhelper",

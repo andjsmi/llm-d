@@ -1,0 +1,6 @@
+pyzmq 27.1.0 https://github.com/zeromq/pyzmq
+autocommand 2.2.2 https://github.com/Lucretiel/autocommand
+matplotlib 3.10.8 https://github.com/matplotlib/matplotlib
+fqdn 1.5.1 https://github.com/ypcrts/fqdn
+certifi 2025.11.12 https://github.com/certifi/python-certifi
+docutils 0.19 https://github.com/docutils/docutils

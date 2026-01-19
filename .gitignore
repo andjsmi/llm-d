@@ -1,2 +1,16 @@
 *.swp
 *.history
+*.cache
+*.vscode-server
+*.gnupg
+*.docker
+*.dotnet
+*.jupyter
+*.bash*
+*subman*
+*.local
+*.ssh
+*nvidia-acknowledgements*
+*.tar.gz
+*LICENSE*
+*.log
